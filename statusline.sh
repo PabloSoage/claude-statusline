@@ -94,7 +94,7 @@ fi
 
 if [[ -n $WK ]]; then
   c=$(color "$WK")
-  out+=" │ sem ${c}${WK%.*}%${RST}"
+  out+=" │ wk ${c}${WK%.*}%${RST}"
   [[ -n $WK_RESET ]] && out+=" ${DIM}↻ $(dia "$WK_RESET") $(date -d @"$WK_RESET" '+%d %H:%M') ($(remaining "$WK_RESET"))${RST}"
 fi
 

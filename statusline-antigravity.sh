@@ -33,10 +33,11 @@ IFS=$'\x1f' read -r MODEL_NAME MODEL_ID EFFORT CTX_RAW < <(
   ] | join("\u001f")' | tr -d '\r'
 )
 
-# Normalize context window percentage (0..100)
+# Both sources (used_percentage and the total_input_tokens/context_window_size
+# fallback) already yield a 0..100 percentage; just round it.
 CTX=""
 if [[ -n $CTX_RAW && $CTX_RAW != "null" ]]; then
-  CTX=$(awk -v v="$CTX_RAW" 'BEGIN { if (v > 0 && v <= 1) printf "%.0f", v*100; else printf "%.0f", v }')
+  CTX=$(awk -v v="$CTX_RAW" 'BEGIN { printf "%.0f", v }')
 fi
 
 # 3. Determine quota group for the currently selected model
@@ -226,7 +227,7 @@ fi
 # Weekly quota
 if [[ -n $WK_USED && $WK_USED != "null" ]]; then
   c=$(color "$WK_USED")
-  out+=" │ sem ${c}${WK_USED}%${RST}"
+  out+=" │ wk ${c}${WK_USED}%${RST}"
   if [[ -n $WK_EPOCH ]]; then
     d_name=$(day_name "$WK_EPOCH")
     wk_time=$(fmt_day_time "$WK_EPOCH")
