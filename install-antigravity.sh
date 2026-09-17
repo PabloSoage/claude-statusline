@@ -45,11 +45,10 @@ if [[ $UNAME =~ (MINGW|MSYS|CYGWIN|Windows) ]]; then
   if [[ -z "$GIT_BASH_PATH" ]]; then
     GIT_BASH_PATH=$(which bash 2>/dev/null || echo "bash")
   fi
-  # Convert to Windows style path with forward slashes or backslashes
-  GIT_BASH_WIN=$(cygpath -s -w "$GIT_BASH_PATH" 2>/dev/null || cygpath -w "$GIT_BASH_PATH" 2>/dev/null || echo "$GIT_BASH_PATH")
-  SCRIPT_WIN=$(cygpath -w "$SCRIPT_PATH" 2>/dev/null || echo "$SCRIPT_PATH")
-  # Use double-quoted paths compatible with Windows command execution
-  SCRIPT_CMD="\"$GIT_BASH_WIN\" \"$SCRIPT_WIN\""
+  # Convert to 8.3 short path without spaces if possible, avoiding quote nesting issues with cmd.exe
+  GIT_BASH_SHORT=$(cygpath -s -m "$GIT_BASH_PATH" 2>/dev/null || cygpath -s -w "$GIT_BASH_PATH" 2>/dev/null || echo "$GIT_BASH_PATH")
+  SCRIPT_SHORT=$(cygpath -s -m "$SCRIPT_PATH" 2>/dev/null || cygpath -s -w "$SCRIPT_PATH" 2>/dev/null || echo "$SCRIPT_PATH")
+  SCRIPT_CMD="$GIT_BASH_SHORT $SCRIPT_SHORT"
 else
   SCRIPT_CMD="bash $SCRIPT_PATH"
 fi
