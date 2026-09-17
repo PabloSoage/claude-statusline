@@ -91,3 +91,55 @@ If macOS says the file came from the internet and won't let it run:
   `esc to interrupt`).
 - To uninstall: remove the `statusLine` key from `~/.claude/settings.json` and delete
   `~/.claude/statusline.sh`.
+
+---
+
+# Google Antigravity CLI (`agy`) status line
+
+Status line support for **Google Antigravity CLI (`agy`)**, showing context usage and quotas adapted dynamically to the active model.
+
+```
+Gemini 3.8 Flash (Medium) │ ctx ▓▓░░░░░░░░ 25% │ 5h 17% ↻ 23:25 (4h41m) │ sem 3% ↻ Wed 23 18:34 (5d23h)
+```
+or when switching to Claude/GPT in Antigravity:
+```
+Claude Sonnet 4.6 (Thinking) · high │ ctx ▓▓▓▓░░░░░░ 40% │ 5h 0% ↻ 23:40 (4h56m) │ sem 0% ↻ Thu 24 18:40 (6d23h)
+```
+
+## Features
+
+- **effort**: Active reasoning effort level (`low`, `medium`, `high`).
+- **ctx**: Percentage of context window used with a 10-block progress bar `▓░`.
+- **5h**: Percentage of session quota used, reset time (`HH:MM`), and time remaining `(XhYYm)`.
+- **sem**: Percentage of weekly quota used, reset day/time (`Day dd HH:MM`), and time remaining `(XdYh)`.
+- **Dynamic model quota switching**:
+  - Gemini models (`Gemini 3.8 Flash`, `Gemini 3.1 Pro`, etc.) track the **Gemini Models** quota group (`gemini-5h`, `gemini-weekly`).
+  - Claude and GPT models (`Claude Sonnet 4.6`, `Claude Opus 4.6`, `GPT-OSS 120B`) switch to the **Claude and GPT models** quota group (`3p-5h`, `3p-weekly`).
+- **Background usage cache**: Caches `/usage` responses in `~/.gemini/antigravity-cli/cache/usage.json` refreshed every 5 minutes in the background (`MSYS_NO_PATHCONV=1 agy -p "/usage" --output-format json`).
+
+## Quick install (Antigravity)
+
+```bash
+cd ~/Downloads/claude-statusline   # or repository path
+./install-antigravity.sh
+```
+
+On Windows, run from Git Bash.
+
+Copies `statusline-antigravity.sh` to `~/.antigravity-statusline/statusline.sh` and configures `statusLine` in `~/.gemini/antigravity-cli/settings.json`.
+
+## Manual install (Antigravity)
+
+1. Copy the script:
+   ```bash
+   mkdir -p ~/.antigravity-statusline
+   cp statusline-antigravity.sh ~/.antigravity-statusline/statusline.sh && chmod +x ~/.antigravity-statusline/statusline.sh
+   ```
+2. Add to `~/.gemini/antigravity-cli/settings.json`:
+   ```json
+   "statusLine": {
+     "command": "bash ~/.antigravity-statusline/statusline.sh",
+     "enabled": true
+   }
+   ```
+3. Open `agy`. The status line will render at the bottom. You can also toggle it via `/statusline`.
