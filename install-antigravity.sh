@@ -32,10 +32,24 @@ cp "$SETTINGS_FILE" "$SETTINGS_FILE.bak"
 
 SCRIPT_PATH="$INSTALL_DIR/statusline.sh"
 
-# On Windows Git Bash, provide bash command invocation with POSIX path
+# On Windows Git Bash, provide Git Bash executable path so Windows agy doesn't invoke WSL bash
 UNAME=$(uname -s 2>/dev/null || echo "Unknown")
 if [[ $UNAME =~ (MINGW|MSYS|CYGWIN|Windows) ]]; then
-  SCRIPT_CMD="bash $SCRIPT_PATH"
+  GIT_BASH_PATH=""
+  for p in "/c/Program Files/Git/bin/bash.exe" "/c/Program Files/Git/usr/bin/bash.exe" "$SYSTEMDRIVE/Program Files/Git/bin/bash.exe" "$LOCALAPPDATA/Programs/Git/bin/bash.exe"; do
+    if [[ -f "$p" ]]; then
+      GIT_BASH_PATH="$p"
+      break
+    fi
+  done
+  if [[ -z "$GIT_BASH_PATH" ]]; then
+    GIT_BASH_PATH=$(which bash 2>/dev/null || echo "bash")
+  fi
+  # Convert to Windows style path with forward slashes or backslashes
+  GIT_BASH_WIN=$(cygpath -s -w "$GIT_BASH_PATH" 2>/dev/null || cygpath -w "$GIT_BASH_PATH" 2>/dev/null || echo "$GIT_BASH_PATH")
+  SCRIPT_WIN=$(cygpath -w "$SCRIPT_PATH" 2>/dev/null || echo "$SCRIPT_PATH")
+  # Use double-quoted paths compatible with Windows command execution
+  SCRIPT_CMD="\"$GIT_BASH_WIN\" \"$SCRIPT_WIN\""
 else
   SCRIPT_CMD="bash $SCRIPT_PATH"
 fi
