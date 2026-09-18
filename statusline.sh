@@ -49,8 +49,11 @@ remaining() { # segundos hasta el epoch -> "2h05m" o "3d4h"
 
 # Endpoint de uso (el de /usage) con cache de 5 min refrescada en segundo plano
 # Da la cuota de Fable, que no viene en el JSON, y 5h y semanal antes de la primera respuesta
-USAGE_CACHE="$HOME/.claude/cache/usage.json"
-CRED_FILE="$HOME/.claude/.credentials.json"
+# CLAUDE_CONFIG_DIR (p.ej. un alias con otra cuenta, como claude2) apunta a
+# credenciales y cache propios; si no esta definida se usa ~/.claude.
+CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+USAGE_CACHE="$CONFIG_DIR/cache/usage.json"
+CRED_FILE="$CONFIG_DIR/.credentials.json"
 mtime=$(stat -c %Y "$USAGE_CACHE" 2>/dev/null || echo 0)
 if (( $(date +%s) - mtime > 300 )); then
   mkdir -p "${USAGE_CACHE%/*}" && touch "$USAGE_CACHE"

@@ -80,6 +80,9 @@ If macOS says the file came from the internet and won't let it run:
   account has no Fable-specific quota, this segment simply doesn't appear.
 - `refreshInterval: 60` repaints the bar every minute even if you're not using Claude, so
   the countdown keeps advancing.
+- If `CLAUDE_CONFIG_DIR` is set (e.g. a second alias like `claude2` for a different
+  account, sharing everything except login), credentials and the usage cache are read
+  from `$CLAUDE_CONFIG_DIR` instead of `~/.claude`, so each account shows its own quotas.
 
 ## Notes
 
