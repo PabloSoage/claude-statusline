@@ -78,6 +78,12 @@ remaining() { # seconds to epoch -> "2h05m" or "3d4h"
   fi
 }
 
+fmt_dur() { # seconds -> "4m32s" or "45s"
+  local s=$1; (( s < 0 )) && s=0
+  if (( s >= 60 )); then printf '%dm%02ds' $((s/60)) $((s%60))
+  else printf '%ds' "$s"; fi
+}
+
 parse_epoch() {
   local t="$1"
   [[ -z $t || $t == "null" ]] && return
@@ -211,6 +217,21 @@ fi
 if [[ -n $CTX && $CTX != "null" ]]; then
   c=$(color "$CTX")
   out+=" │ ctx ${c}$(bar "$CTX") ${CTX}%${RST}"
+fi
+
+# Freshness of the local /usage cache, refreshed in the background every 5 min
+if (( mtime > 0 )); then
+  age=$(( NOW - mtime )); (( age < 0 )) && age=0
+  ttl=300
+  left=$(( ttl - age )); (( left < 0 )) && left=0
+  pct=$(( age * 100 / ttl )); (( pct > 100 )) && pct=100
+  if   (( pct >= 100 )); then Q="○"
+  elif (( pct >= 75 ));  then Q="◔"
+  elif (( pct >= 50 ));  then Q="◑"
+  elif (( pct >= 25 ));  then Q="◕"
+  else Q="●"; fi
+  c=$(color "$pct")
+  out+=" │ cache ${c}${Q}${RST} ${DIM}$(fmt_dur "$age") ↻ $(fmt_dur "$left")${RST}"
 fi
 
 # 5-hour quota

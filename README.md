@@ -1,16 +1,19 @@
 # Claude Code status line: context and quotas
 
 ```
-Opus 5 · high │ ctx ▓▓▓░░░░░░░ 34% │ 5h 22% ↻ 12:50 (2h20m) │ wk 40% ↻ mar 22 12:00 (5d1h) │ fable 22% ↻ mar 22 11:59
+Opus 5 · high │ ctx ▓▓▓░░░░░░░ 34% │ cache ◕ 2m01s ↻ 2m59s │ 5h 22% ↻ 12:50 (2h20m) │ wk 40% ↻ mar 22 12:00 (5d1h) │ fable 22% ↻ mar 22 11:59
 ```
 
 - **effort**: the session's reasoning level (`low` … `max`), also updates after changing it with `/effort`.
   Doesn't appear if the model doesn't support effort.
 - **ctx**: % of context used.
+- **cache**: freshness of the local `/usage` cache (see below) — a pie glyph (`●◕◑◔○`, full when just
+  refreshed, empty once stale), age since the last refresh, and time left before it's refreshed again in
+  the background.
 - **5h**: % of the session quota, reset time, and time remaining.
 - **wk**: % of the weekly quota, reset day and time, and time remaining.
 - **fable**: % of the weekly Fable quota and its reset time.
-- Colors: green < 50%, yellow < 80%, red from 80% up.
+- Colors: green < 50%, yellow < 80%, red from 80% up (for **cache**, that's % of the 5-minute TTL elapsed).
 
 ## Requirements
 
@@ -78,6 +81,10 @@ If macOS says the file came from the internet and won't let it run:
   and refreshed in the background, so it can lag up to 5 minutes behind. If Anthropic
   changes that endpoint, this segment just disappears without breaking the rest. If your
   account has no Fable-specific quota, this segment simply doesn't appear.
+- **cache** tracks that same 5-minute-TTL `usage.json` file: its age is `now - mtime`, and once that
+  age passes 300s the background refresh kicks in (the pie glyph goes to `○` and stays there until the
+  refresh lands). It only disappears if the cache file doesn't exist yet (first run, before any refresh
+  has happened).
 - `refreshInterval: 60` repaints the bar every minute even if you're not using Claude, so
   the countdown keeps advancing.
 - If `CLAUDE_CONFIG_DIR` is set (e.g. a second alias like `claude2` for a different
@@ -102,17 +109,19 @@ If macOS says the file came from the internet and won't let it run:
 Status line support for **Google Antigravity CLI (`agy`)**, showing context usage and quotas adapted dynamically to the active model.
 
 ```
-Gemini 3.8 Flash (Medium) │ ctx ▓▓░░░░░░░░ 25% │ 5h 17% ↻ 23:25 (4h41m) │ wk 3% ↻ Wed 23 18:34 (5d23h)
+Gemini 3.8 Flash (Medium) │ ctx ▓▓░░░░░░░░ 25% │ cache ◕ 2m01s ↻ 2m59s │ 5h 17% ↻ 23:25 (4h41m) │ wk 3% ↻ Wed 23 18:34 (5d23h)
 ```
 or when switching to Claude/GPT in Antigravity:
 ```
-Claude Sonnet 4.6 (Thinking) · high │ ctx ▓▓▓▓░░░░░░ 40% │ 5h 0% ↻ 23:40 (4h56m) │ wk 0% ↻ Thu 24 18:40 (6d23h)
+Claude Sonnet 4.6 (Thinking) · high │ ctx ▓▓▓▓░░░░░░ 40% │ cache ● 12s ↻ 4m48s │ 5h 0% ↻ 23:40 (4h56m) │ wk 0% ↻ Thu 24 18:40 (6d23h)
 ```
 
 ## Features
 
 - **effort**: Active reasoning effort level (`low`, `medium`, `high`).
 - **ctx**: Percentage of context window used with a 10-block progress bar `▓░`.
+- **cache**: Freshness of the local `usage.json` cache — a pie glyph (`●◕◑◔○`, full when just refreshed,
+  empty once stale), age since the last refresh, and time left before the next background refresh.
 - **5h**: Percentage of session quota used, reset time (`HH:MM`), and time remaining `(XhYYm)`.
 - **wk**: Percentage of weekly quota used, reset day/time (`Day dd HH:MM`), and time remaining `(XdYh)`.
 - **Dynamic model quota switching**:

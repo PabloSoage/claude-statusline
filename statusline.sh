@@ -46,6 +46,11 @@ remaining() { # segundos hasta el epoch -> "2h05m" o "3d4h"
   if (( s >= 86400 )); then printf '%dd%dh' $((s/86400)) $((s%86400/3600))
   else printf '%dh%02dm' $((s/3600)) $((s%3600/60)); fi
 }
+fmt_dur() { # segundos -> "4m32s" o "45s"
+  local s=$1; (( s < 0 )) && s=0
+  if (( s >= 60 )); then printf '%dm%02ds' $((s/60)) $((s%60))
+  else printf '%ds' "$s"; fi
+}
 
 # Endpoint de uso (el de /usage) con cache de 5 min refrescada en segundo plano
 # Da la cuota de Fable, que no viene en el JSON, y 5h y semanal antes de la primera respuesta
@@ -87,6 +92,21 @@ out="${DIM}${MODEL}${RST}"
 if [[ -n $CTX ]]; then
   c=$(color "$CTX")
   out+=" │ ctx ${c}$(bar "$CTX") ${CTX%.*}%${RST}"
+fi
+
+# Frescura de la cache local de /usage (usage.json), refrescada en segundo plano cada 5 min
+if (( mtime > 0 )); then
+  age=$(( now - mtime )); (( age < 0 )) && age=0
+  ttl=300
+  left=$(( ttl - age )); (( left < 0 )) && left=0
+  pct=$(( age * 100 / ttl )); (( pct > 100 )) && pct=100
+  if   (( pct >= 100 )); then Q="○"
+  elif (( pct >= 75 ));  then Q="◔"
+  elif (( pct >= 50 ));  then Q="◑"
+  elif (( pct >= 25 ));  then Q="◕"
+  else Q="●"; fi
+  c=$(color "$pct")
+  out+=" │ cache ${c}${Q}${RST} ${DIM}$(fmt_dur "$age") ↻ $(fmt_dur "$left")${RST}"
 fi
 
 if [[ -n $H5 ]]; then
