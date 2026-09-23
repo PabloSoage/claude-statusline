@@ -219,21 +219,6 @@ if [[ -n $CTX && $CTX != "null" ]]; then
   out+=" │ ctx ${c}$(bar "$CTX") ${CTX}%${RST}"
 fi
 
-# Freshness of the local /usage cache, refreshed in the background every 5 min
-if (( mtime > 0 )); then
-  age=$(( NOW - mtime )); (( age < 0 )) && age=0
-  ttl=300
-  left=$(( ttl - age )); (( left < 0 )) && left=0
-  pct=$(( age * 100 / ttl )); (( pct > 100 )) && pct=100
-  if   (( pct >= 100 )); then Q="○"
-  elif (( pct >= 75 ));  then Q="◔"
-  elif (( pct >= 50 ));  then Q="◑"
-  elif (( pct >= 25 ));  then Q="◕"
-  else Q="●"; fi
-  c=$(color "$pct")
-  out+=" │ cache ${c}${Q}${RST} ${DIM}$(fmt_dur "$age") ↻ $(fmt_dur "$left")${RST}"
-fi
-
 # 5-hour quota
 if [[ -n $H5_USED && $H5_USED != "null" ]]; then
   c=$(color "$H5_USED")
@@ -255,6 +240,21 @@ if [[ -n $WK_USED && $WK_USED != "null" ]]; then
     rem=$(remaining "$WK_EPOCH")
     [[ -n $wk_time ]] && out+=" ${DIM}↻ ${d_name} ${wk_time} (${rem})${RST}"
   fi
+fi
+
+# Freshness of the local /usage cache, refreshed in the background every 5 min
+if (( mtime > 0 )); then
+  age=$(( NOW - mtime )); (( age < 0 )) && age=0
+  ttl=300
+  left=$(( ttl - age )); (( left < 0 )) && left=0
+  pct=$(( age * 100 / ttl )); (( pct > 100 )) && pct=100
+  if   (( pct >= 100 )); then Q="○"
+  elif (( pct >= 75 ));  then Q="◔"
+  elif (( pct >= 50 ));  then Q="◑"
+  elif (( pct >= 25 ));  then Q="◕"
+  else Q="●"; fi
+  c=$(color "$pct")
+  out+=" │ cache ${c}${Q}${RST} ${DIM}$(fmt_dur "$age") ↻ $(fmt_dur "$left")${RST}"
 fi
 
 printf '%s\n' "$out"

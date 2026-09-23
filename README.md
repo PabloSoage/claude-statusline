@@ -1,18 +1,18 @@
 # Claude Code status line: context and quotas
 
 ```
-Opus 5 · high │ ctx ▓▓▓░░░░░░░ 34% │ cache ◕ 2m01s ↻ 2m59s │ 5h 22% ↻ 12:50 (2h20m) │ wk 40% ↻ mar 22 12:00 (5d1h) │ fable 22% ↻ mar 22 11:59
+Opus 5 · high │ ctx ▓▓▓░░░░░░░ 34% │ 5h 22% ↻ 12:50 (2h20m) │ wk 40% ↻ mar 22 12:00 (5d1h) │ fable 22% ↻ mar 22 11:59 │ cache ◕ 2m01s ↻ 2m59s
 ```
 
 - **effort**: the session's reasoning level (`low` … `max`), also updates after changing it with `/effort`.
   Doesn't appear if the model doesn't support effort.
 - **ctx**: % of context used.
-- **cache**: freshness of the local `/usage` cache (see below) — a pie glyph (`●◕◑◔○`, full when just
-  refreshed, empty once stale), age since the last refresh, and time left before it's refreshed again in
-  the background.
 - **5h**: % of the session quota, reset time, and time remaining.
 - **wk**: % of the weekly quota, reset day and time, and time remaining.
 - **fable**: % of the weekly Fable quota and its reset time.
+- **cache**: freshness of the local `/usage` cache (see below) — a pie glyph (`●◕◑◔○`, full when just
+  refreshed, empty once stale), age since the last refresh, and time left before it's refreshed again in
+  the background.
 - Colors: green < 50%, yellow < 80%, red from 80% up (for **cache**, that's % of the 5-minute TTL elapsed).
 
 ## Requirements
@@ -109,21 +109,21 @@ If macOS says the file came from the internet and won't let it run:
 Status line support for **Google Antigravity CLI (`agy`)**, showing context usage and quotas adapted dynamically to the active model.
 
 ```
-Gemini 3.8 Flash (Medium) │ ctx ▓▓░░░░░░░░ 25% │ cache ◕ 2m01s ↻ 2m59s │ 5h 17% ↻ 23:25 (4h41m) │ wk 3% ↻ Wed 23 18:34 (5d23h)
+Gemini 3.8 Flash (Medium) │ ctx ▓▓░░░░░░░░ 25% │ 5h 17% ↻ 23:25 (4h41m) │ wk 3% ↻ Wed 23 18:34 (5d23h) │ cache ◕ 2m01s ↻ 2m59s
 ```
 or when switching to Claude/GPT in Antigravity:
 ```
-Claude Sonnet 4.6 (Thinking) · high │ ctx ▓▓▓▓░░░░░░ 40% │ cache ● 12s ↻ 4m48s │ 5h 0% ↻ 23:40 (4h56m) │ wk 0% ↻ Thu 24 18:40 (6d23h)
+Claude Sonnet 4.6 (Thinking) · high │ ctx ▓▓▓▓░░░░░░ 40% │ 5h 0% ↻ 23:40 (4h56m) │ wk 0% ↻ Thu 24 18:40 (6d23h) │ cache ● 12s ↻ 4m48s
 ```
 
 ## Features
 
 - **effort**: Active reasoning effort level (`low`, `medium`, `high`).
 - **ctx**: Percentage of context window used with a 10-block progress bar `▓░`.
-- **cache**: Freshness of the local `usage.json` cache — a pie glyph (`●◕◑◔○`, full when just refreshed,
-  empty once stale), age since the last refresh, and time left before the next background refresh.
 - **5h**: Percentage of session quota used, reset time (`HH:MM`), and time remaining `(XhYYm)`.
 - **wk**: Percentage of weekly quota used, reset day/time (`Day dd HH:MM`), and time remaining `(XdYh)`.
+- **cache**: Freshness of the local `usage.json` cache — a pie glyph (`●◕◑◔○`, full when just refreshed,
+  empty once stale), age since the last refresh, and time left before the next background refresh.
 - **Dynamic model quota switching**:
   - Gemini models (`Gemini 3.8 Flash`, `Gemini 3.1 Pro`, etc.) track the **Gemini Models** quota group (`gemini-5h`, `gemini-weekly`).
   - Claude and GPT models (`Claude Sonnet 4.6`, `Claude Opus 4.6`, `GPT-OSS 120B`) switch to the **Claude and GPT models** quota group (`3p-5h`, `3p-weekly`).

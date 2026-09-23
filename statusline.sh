@@ -94,21 +94,6 @@ if [[ -n $CTX ]]; then
   out+=" │ ctx ${c}$(bar "$CTX") ${CTX%.*}%${RST}"
 fi
 
-# Frescura de la cache local de /usage (usage.json), refrescada en segundo plano cada 5 min
-if (( mtime > 0 )); then
-  age=$(( now - mtime )); (( age < 0 )) && age=0
-  ttl=300
-  left=$(( ttl - age )); (( left < 0 )) && left=0
-  pct=$(( age * 100 / ttl )); (( pct > 100 )) && pct=100
-  if   (( pct >= 100 )); then Q="○"
-  elif (( pct >= 75 ));  then Q="◔"
-  elif (( pct >= 50 ));  then Q="◑"
-  elif (( pct >= 25 ));  then Q="◕"
-  else Q="●"; fi
-  c=$(color "$pct")
-  out+=" │ cache ${c}${Q}${RST} ${DIM}$(fmt_dur "$age") ↻ $(fmt_dur "$left")${RST}"
-fi
-
 if [[ -n $H5 ]]; then
   c=$(color "$H5")
   out+=" │ 5h ${c}${H5%.*}%${RST}"
@@ -131,6 +116,21 @@ if [[ -n $FB ]]; then
   c=$(color "$FB")
   out+=" │ fable ${c}${FB%.*}%${RST}"
   [[ -n $FB_RESET ]] && out+=" ${DIM}↻ $(dia "$FB_RESET") $(date -d @"$FB_RESET" '+%d %H:%M')${RST}"
+fi
+
+# Frescura de la cache local de /usage (usage.json), refrescada en segundo plano cada 5 min
+if (( mtime > 0 )); then
+  age=$(( now - mtime )); (( age < 0 )) && age=0
+  ttl=300
+  left=$(( ttl - age )); (( left < 0 )) && left=0
+  pct=$(( age * 100 / ttl )); (( pct > 100 )) && pct=100
+  if   (( pct >= 100 )); then Q="○"
+  elif (( pct >= 75 ));  then Q="◔"
+  elif (( pct >= 50 ));  then Q="◑"
+  elif (( pct >= 25 ));  then Q="◕"
+  else Q="●"; fi
+  c=$(color "$pct")
+  out+=" │ cache ${c}${Q}${RST} ${DIM}$(fmt_dur "$age") ↻ $(fmt_dur "$left")${RST}"
 fi
 
 printf '%s\n' "$out"
