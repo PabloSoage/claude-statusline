@@ -1,7 +1,7 @@
 # Claude Code status line: context and quotas
 
 ```
-Opus 5 · high │ ctx ▓▓▓░░░░░░░ 34% │ 5h 22% ↻ 12:50 (2h20m) │ wk 40% ↻ mar 22 12:00 (5d1h) │ fable 22% ↻ mar 22 11:59 │ cache ◕ 2m01s ↻ 2m59s
+Opus 5 · high │ ctx ▓▓▓░░░░░░░ 34% │ 5h 22% ↻ 12:50 (2h20m) │ wk 40% ↻ mar 22 12:00 (5d1h) │ fable 22% ↻ mar 22 11:59 │ cache ● 1h ↻ 47m12s
 ```
 
 - **effort**: the session's reasoning level (`low` … `max`), also updates after changing it with `/effort`.
@@ -10,10 +10,10 @@ Opus 5 · high │ ctx ▓▓▓░░░░░░░ 34% │ 5h 22% ↻ 12:50 (
 - **5h**: % of the session quota, reset time, and time remaining.
 - **wk**: % of the weekly quota, reset day and time, and time remaining.
 - **fable**: % of the weekly Fable quota and its reset time.
-- **cache**: freshness of the local `/usage` cache (see below) — a pie glyph (`●◕◑◔○`, full when just
-  refreshed, empty once stale), age since the last refresh, and time left before it's refreshed again in
-  the background.
-- Colors: green < 50%, yellow < 80%, red from 80% up (for **cache**, that's % of the 5-minute TTL elapsed).
+- **cache**: how much longer Anthropic's prompt cache for this session stays warm — a pie glyph
+  (`●◕◑◔`, full right after a cache hit/write, thinning out as it approaches expiry), the TTL in play
+  (`5m` or `1h`), and the time left before it expires.
+- Colors: green < 50%, yellow < 80%, red from 80% up (for **cache**, that's % of the TTL already elapsed).
 
 ## Requirements
 
@@ -81,10 +81,14 @@ If macOS says the file came from the internet and won't let it run:
   and refreshed in the background, so it can lag up to 5 minutes behind. If Anthropic
   changes that endpoint, this segment just disappears without breaking the rest. If your
   account has no Fable-specific quota, this segment simply doesn't appear.
-- **cache** tracks that same 5-minute-TTL `usage.json` file: its age is `now - mtime`, and once that
-  age passes 300s the background refresh kicks in (the pie glyph goes to `○` and stays there until the
-  refresh lands). It only disappears if the cache file doesn't exist yet (first run, before any refresh
-  has happened).
+- **cache** is unrelated to the `usage.json` file above — it's Anthropic's server-side prompt cache for
+  the conversation. Claude Code caches the prompt with a 1-hour TTL by default, dropping to 5 minutes if
+  the account is in usage overage; this isn't in the stdin JSON, so the script finds it by reading the
+  tail of the session's transcript (`transcript_path` from stdin) for the last message with cache
+  activity (`message.usage.cache_read_input_tokens` or `cache_creation_input_tokens`), and the TTL is
+  read off the most recent `cache_creation.ephemeral_1h_input_tokens` / `ephemeral_5m_input_tokens` in
+  that same window. It disappears once nothing to base the countdown on has been found yet (no cache
+  activity in the last 500 transcript lines) or once the cache has already expired.
 - `refreshInterval: 60` repaints the bar every minute even if you're not using Claude, so
   the countdown keeps advancing.
 - If `CLAUDE_CONFIG_DIR` is set (e.g. a second alias like `claude2` for a different
@@ -109,11 +113,11 @@ If macOS says the file came from the internet and won't let it run:
 Status line support for **Google Antigravity CLI (`agy`)**, showing context usage and quotas adapted dynamically to the active model.
 
 ```
-Gemini 3.8 Flash (Medium) │ ctx ▓▓░░░░░░░░ 25% │ 5h 17% ↻ 23:25 (4h41m) │ wk 3% ↻ Wed 23 18:34 (5d23h) │ cache ◕ 2m01s ↻ 2m59s
+Gemini 3.8 Flash (Medium) │ ctx ▓▓░░░░░░░░ 25% │ 5h 17% ↻ 23:25 (4h41m) │ wk 3% ↻ Wed 23 18:34 (5d23h)
 ```
 or when switching to Claude/GPT in Antigravity:
 ```
-Claude Sonnet 4.6 (Thinking) · high │ ctx ▓▓▓▓░░░░░░ 40% │ 5h 0% ↻ 23:40 (4h56m) │ wk 0% ↻ Thu 24 18:40 (6d23h) │ cache ● 12s ↻ 4m48s
+Claude Sonnet 4.6 (Thinking) · high │ ctx ▓▓▓▓░░░░░░ 40% │ 5h 0% ↻ 23:40 (4h56m) │ wk 0% ↻ Thu 24 18:40 (6d23h)
 ```
 
 ## Features
@@ -122,8 +126,9 @@ Claude Sonnet 4.6 (Thinking) · high │ ctx ▓▓▓▓░░░░░░ 40% 
 - **ctx**: Percentage of context window used with a 10-block progress bar `▓░`.
 - **5h**: Percentage of session quota used, reset time (`HH:MM`), and time remaining `(XhYYm)`.
 - **wk**: Percentage of weekly quota used, reset day/time (`Day dd HH:MM`), and time remaining `(XdYh)`.
-- **cache**: Freshness of the local `usage.json` cache — a pie glyph (`●◕◑◔○`, full when just refreshed,
-  empty once stale), age since the last refresh, and time left before the next background refresh.
+- No **cache** segment here: `agy` wraps several model providers (Gemini, Claude, GPT) and doesn't
+  expose a per-conversation prompt-cache TTL the way Claude Code's own transcript does, so this script
+  doesn't attempt to guess one.
 - **Dynamic model quota switching**:
   - Gemini models (`Gemini 3.8 Flash`, `Gemini 3.1 Pro`, etc.) track the **Gemini Models** quota group (`gemini-5h`, `gemini-weekly`).
   - Claude and GPT models (`Claude Sonnet 4.6`, `Claude Opus 4.6`, `GPT-OSS 120B`) switch to the **Claude and GPT models** quota group (`3p-5h`, `3p-weekly`).

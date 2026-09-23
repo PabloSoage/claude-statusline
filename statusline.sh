@@ -118,19 +118,43 @@ if [[ -n $FB ]]; then
   [[ -n $FB_RESET ]] && out+=" ${DIM}↻ $(dia "$FB_RESET") $(date -d @"$FB_RESET" '+%d %H:%M')${RST}"
 fi
 
-# Frescura de la cache local de /usage (usage.json), refrescada en segundo plano cada 5 min
-if (( mtime > 0 )); then
-  age=$(( now - mtime )); (( age < 0 )) && age=0
-  ttl=300
-  left=$(( ttl - age )); (( left < 0 )) && left=0
-  pct=$(( age * 100 / ttl )); (( pct > 100 )) && pct=100
-  if   (( pct >= 100 )); then Q="○"
-  elif (( pct >= 75 ));  then Q="◔"
-  elif (( pct >= 50 ));  then Q="◑"
-  elif (( pct >= 25 ));  then Q="◕"
-  else Q="●"; fi
-  c=$(color "$pct")
-  out+=" │ cache ${c}${Q}${RST} ${DIM}$(fmt_dur "$age") ↻ $(fmt_dur "$left")${RST}"
+# TTL restante de la prompt cache de Anthropic (no la de usage.json: esa es la del
+# endpoint /usage). Claude Code cachea el prompt con TTL de 1h por defecto, y baja a
+# 5m si la cuenta entra en overage. No viene en el JSON de stdin, así que se calcula
+# a partir del ultimo evento de cache (lectura o escritura) del transcript de la sesion:
+# el tipo de TTL se toma del ultimo cache_creation con ese TTL, y la cuenta atras sale
+# de sumarle el TTL al timestamp de ese ultimo evento.
+TRANSCRIPT=$(echo "$input" | "$JQ" -r '.transcript_path // empty' | tr -d '\r')
+if [[ -n $TRANSCRIPT && -f $TRANSCRIPT ]]; then
+  IFS=$'\x1f' read -r CACHE_EPOCH CACHE_TTL < <(
+    tail -n 500 "$TRANSCRIPT" | "$JQ" -rs '
+      [.[] | select(.type == "assistant" and .message.usage != null)] as $all |
+      ([$all[] | select((.message.usage.cache_read_input_tokens // 0) > 0
+        or (.message.usage.cache_creation_input_tokens // 0) > 0)] | .[-1]) as $touch |
+      ([$all[] | select((.message.usage.cache_creation.ephemeral_1h_input_tokens // 0) > 0)] | .[-1]) as $w1h |
+      ([$all[] | select((.message.usage.cache_creation.ephemeral_5m_input_tokens // 0) > 0)] | .[-1]) as $w5m |
+      if $touch == null then "" else
+        [
+          ($touch.timestamp // "" | sub("\\..*"; "Z") | fromdateiso8601? // "" | tostring),
+          (if $w1h != null then "3600" elif $w5m != null then "300" else "3600" end)
+        ] | join("\u001f")
+      end
+    ' 2>/dev/null | tr -d '\r'
+  )
+fi
+
+if [[ -n $CACHE_EPOCH ]]; then
+  left=$(( CACHE_EPOCH + CACHE_TTL - $(date +%s) ))
+  if (( left > 0 )); then
+    pct_left=$(( left * 100 / CACHE_TTL ))
+    if   (( pct_left >= 75 )); then Q="●"
+    elif (( pct_left >= 50 )); then Q="◕"
+    elif (( pct_left >= 25 )); then Q="◑"
+    else Q="◔"; fi
+    c=$(color $(( 100 - pct_left )))
+    ttl_label="5m"; (( CACHE_TTL == 3600 )) && ttl_label="1h"
+    out+=" │ cache ${c}${Q}${RST} ${DIM}${ttl_label} ↻ $(fmt_dur "$left")${RST}"
+  fi
 fi
 
 printf '%s\n' "$out"
