@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 # Status line: modelo y effort | contexto | cuota 5h | cuota semanal (con reinicios)
-# Version Windows/Git Bash (usa GNU date/stat y lee el token del fichero de credenciales,
-# no del Llavero de macOS).
+# Funciona en macOS (date -r, stat -f y el token del Llavero) y en Windows/Git Bash o Linux
+# (GNU date/stat y el token de .credentials.json); se detecta al arrancar.
 input=$(cat)
 
 # jq puede no estar en el PATH cuando Claude Code lanza este script (Git Bash no siempre
-# hereda ~/.bashrc en modo no interactivo). Buscamos un jq usable en varias rutas.
+# hereda ~/.bashrc en modo no interactivo; en macOS, el de Homebrew puede faltar del PATH).
+# Buscamos un jq usable en varias rutas.
 JQ=jq
 if ! command -v jq >/dev/null 2>&1; then
-  for c in "$HOME/.local/bin/jq.exe" "$HOME/.local/bin/jq" "/mingw64/bin/jq.exe"; do
+  for c in "$HOME/.local/bin/jq.exe" "$HOME/.local/bin/jq" "/mingw64/bin/jq.exe" \
+            "/opt/homebrew/bin/jq" "/usr/local/bin/jq"; do
     [[ -x "$c" ]] && { JQ="$c"; break; }
   done
 fi
@@ -24,7 +26,7 @@ IFS=$'\x1f' read -r MODEL EFFORT CTX H5 H5_RESET WK WK_RESET < <(
     (.rate_limits.five_hour.resets_at // "" | tostring),
     (.rate_limits.seven_day.used_percentage // "" | tostring),
     (.rate_limits.seven_day.resets_at // "" | tostring)
-  ] | join("")' | tr -d '\r'
+  ] | join("\u001f")' | tr -d '\r'
 )
 
 RST=$'\033[0m'; DIM=$'\033[2m'
@@ -46,6 +48,14 @@ remaining() { # segundos hasta el epoch -> "2h05m" o "3d4h"
   if (( s >= 86400 )); then printf '%dd%dh' $((s/86400)) $((s%86400/3600))
   else printf '%dh%02dm' $((s/3600)) $((s%3600/60)); fi
 }
+# GNU date/stat (Windows/Git Bash, Linux) o BSD (macOS)
+if date -d @0 +%s >/dev/null 2>&1; then
+  fmt_epoch() { date -d @"$1" "+$2"; }
+  file_mtime() { stat -c %Y "$1" 2>/dev/null; }
+else
+  fmt_epoch() { date -r "$1" "+$2"; }
+  file_mtime() { stat -f %m "$1" 2>/dev/null; }
+fi
 fmt_dur() { # segundos -> "4m32s" o "45s"
   local s=$1; (( s < 0 )) && s=0
   if (( s >= 60 )); then printf '%dm%02ds' $((s/60)) $((s%60))
@@ -59,11 +69,16 @@ fmt_dur() { # segundos -> "4m32s" o "45s"
 CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 USAGE_CACHE="$CONFIG_DIR/cache/usage.json"
 CRED_FILE="$CONFIG_DIR/.credentials.json"
-mtime=$(stat -c %Y "$USAGE_CACHE" 2>/dev/null || echo 0)
+mtime=$(file_mtime "$USAGE_CACHE" || echo 0)
 if (( $(date +%s) - mtime > 300 )); then
   mkdir -p "${USAGE_CACHE%/*}" && touch "$USAGE_CACHE"
   (
-    token=$("$JQ" -r '.claudeAiOauth.accessToken // empty' "$CRED_FILE" 2>/dev/null | tr -d '\r')
+    if [[ -f $CRED_FILE ]]; then
+      token=$("$JQ" -r '.claudeAiOauth.accessToken // empty' "$CRED_FILE" 2>/dev/null | tr -d '\r')
+    elif command -v security >/dev/null 2>&1; then  # macOS: el token esta en el Llavero
+      token=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null |
+        "$JQ" -r '.claudeAiOauth.accessToken // empty')
+    fi
     [[ -n $token ]] && curl -sf --max-time 10 https://api.anthropic.com/api/oauth/usage \
       -H "Authorization: Bearer $token" -H "anthropic-beta: oauth-2025-04-20" \
       -o "$USAGE_CACHE.tmp" && mv "$USAGE_CACHE.tmp" "$USAGE_CACHE"
@@ -74,7 +89,7 @@ fi
 [[ -z $CTX ]] && CTX=0
 from_cache() { # ventana del endpoint de uso -> "porcentaje<US>epoch de reinicio"
   "$JQ" -r --arg w "$1" '.[$w] | [(.utilization // "" | tostring),
-    (.resets_at // "" | sub("\\..*"; "Z") | fromdateiso8601? // "" | tostring)] | join("")' \
+    (.resets_at // "" | sub("\\..*"; "Z") | fromdateiso8601? // "" | tostring)] | join("\u001f")' \
     "$USAGE_CACHE" 2>/dev/null | tr -d '\r'
 }
 [[ -z $H5 ]] && IFS=$'\x1f' read -r H5 H5_RESET < <(from_cache five_hour)
@@ -84,7 +99,7 @@ now=$(date +%s)
 [[ -n $H5_RESET && $H5_RESET -lt $now ]] && H5=""
 [[ -n $WK_RESET && $WK_RESET -lt $now ]] && WK=""
 
-dia() { local d=(dom lun mar mié jue vie sáb); echo "${d[$(date -d @"$1" +%w)]}"; }
+dia() { local d=(dom lun mar mié jue vie sáb); echo "${d[$(fmt_epoch "$1" %w)]}"; }
 
 out="${DIM}${MODEL}${RST}"
 [[ -n $EFFORT ]] && out+=" ${DIM}·${RST} ${EFFORT}"
@@ -97,25 +112,25 @@ fi
 if [[ -n $H5 ]]; then
   c=$(color "$H5")
   out+=" │ 5h ${c}${H5%.*}%${RST}"
-  [[ -n $H5_RESET ]] && out+=" ${DIM}↻ $(date -d @"$H5_RESET" +%H:%M) ($(remaining "$H5_RESET"))${RST}"
+  [[ -n $H5_RESET ]] && out+=" ${DIM}↻ $(fmt_epoch "$H5_RESET" %H:%M) ($(remaining "$H5_RESET"))${RST}"
 fi
 
 if [[ -n $WK ]]; then
   c=$(color "$WK")
   out+=" │ wk ${c}${WK%.*}%${RST}"
-  [[ -n $WK_RESET ]] && out+=" ${DIM}↻ $(dia "$WK_RESET") $(date -d @"$WK_RESET" '+%d %H:%M') ($(remaining "$WK_RESET"))${RST}"
+  [[ -n $WK_RESET ]] && out+=" ${DIM}↻ $(dia "$WK_RESET") $(fmt_epoch "$WK_RESET" '%d %H:%M') ($(remaining "$WK_RESET"))${RST}"
 fi
 
 IFS=$'\x1f' read -r FB FB_RESET < <(
   "$JQ" -r 'first(.limits[]? | select(.kind == "weekly_scoped" and .scope.model.display_name == "Fable"))
-    | [(.percent | tostring), (.resets_at // "" | sub("\\..*"; "Z") | fromdateiso8601? // "" | tostring)] | join("")' \
+    | [(.percent | tostring), (.resets_at // "" | sub("\\..*"; "Z") | fromdateiso8601? // "" | tostring)] | join("\u001f")' \
     "$USAGE_CACHE" 2>/dev/null | tr -d '\r'
 )
 
 if [[ -n $FB ]]; then
   c=$(color "$FB")
   out+=" │ fable ${c}${FB%.*}%${RST}"
-  [[ -n $FB_RESET ]] && out+=" ${DIM}↻ $(dia "$FB_RESET") $(date -d @"$FB_RESET" '+%d %H:%M')${RST}"
+  [[ -n $FB_RESET ]] && out+=" ${DIM}↻ $(dia "$FB_RESET") $(fmt_epoch "$FB_RESET" '%d %H:%M')${RST}"
 fi
 
 # TTL restante de la prompt cache de Anthropic (no la de usage.json: esa es la del

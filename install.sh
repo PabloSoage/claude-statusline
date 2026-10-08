@@ -5,7 +5,8 @@ cd "$(dirname "$0")"
 
 JQ=jq
 if ! command -v jq >/dev/null 2>&1; then
-  for c in "$HOME/.local/bin/jq.exe" "$HOME/.local/bin/jq" "/mingw64/bin/jq.exe"; do
+  for c in "$HOME/.local/bin/jq.exe" "$HOME/.local/bin/jq" "/mingw64/bin/jq.exe" \
+            "/opt/homebrew/bin/jq" "/usr/local/bin/jq"; do
     [[ -x "$c" ]] && { JQ="$c"; break; }
   done
 fi
