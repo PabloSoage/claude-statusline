@@ -144,21 +144,6 @@ CACHE_DIR="$HOME/.gemini/antigravity-cli/cache"
 USAGE_CACHE="$CACHE_DIR/usage.json"
 NOW=$(date +%s)
 
-mtime=0
-if [[ -f $USAGE_CACHE ]]; then
-  mtime=$(stat -c %Y "$USAGE_CACHE" 2>/dev/null || stat -f %m "$USAGE_CACHE" 2>/dev/null || echo 0)
-fi
-
-# Refresh cache in background if older than 5 minutes (300 seconds)
-if (( NOW - mtime > 300 )); then
-  mkdir -p "$CACHE_DIR" 2>/dev/null
-  touch "$USAGE_CACHE" 2>/dev/null
-  (
-    # MSYS_NO_PATHCONV=1 prevents Git Bash from converting /usage to a file path
-    MSYS_NO_PATHCONV=1 agy -p "/usage" --output-format json > "$USAGE_CACHE.tmp" 2>/dev/null && mv "$USAGE_CACHE.tmp" "$USAGE_CACHE"
-  ) >/dev/null 2>&1 &
-fi
-
 # If quota missing in stdin, read from cache
 if [[ -z $H5_USED || -z $WK_USED ]] && [[ -f $USAGE_CACHE ]]; then
   IFS=$'\x1f' read -r CH5_USED CH5_RESET CWK_USED CWK_RESET < <(
@@ -237,3 +222,5 @@ if [[ -n $WK_USED && $WK_USED != "null" ]]; then
 fi
 
 printf '%s\n' "$out"
+exit 0
+

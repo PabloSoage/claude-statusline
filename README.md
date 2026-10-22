@@ -132,7 +132,7 @@ Claude Sonnet 4.6 (Thinking) · high │ ctx ▓▓▓▓░░░░░░ 40% 
 - **Dynamic model quota switching**:
   - Gemini models (`Gemini 3.8 Flash`, `Gemini 3.1 Pro`, etc.) track the **Gemini Models** quota group (`gemini-5h`, `gemini-weekly`).
   - Claude and GPT models (`Claude Sonnet 4.6`, `Claude Opus 4.6`, `GPT-OSS 120B`) switch to the **Claude and GPT models** quota group (`3p-5h`, `3p-weekly`).
-- **Background usage cache**: Caches `/usage` responses in `~/.gemini/antigravity-cli/cache/usage.json` refreshed every 5 minutes in the background (`MSYS_NO_PATHCONV=1 agy -p "/usage" --output-format json`).
+- **Direct quota consumption**: Uses live quota metrics injected directly by Antigravity CLI via stdin (`.quota`), falling back to local cached usage if available without spawning background subshells (preventing command runner timeouts on Windows Git Bash).
 
 ## Quick install (Antigravity)
 

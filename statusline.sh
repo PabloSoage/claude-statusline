@@ -173,3 +173,5 @@ if [[ -n $CACHE_EPOCH ]]; then
 fi
 
 printf '%s\n' "$out"
+exit 0
+
