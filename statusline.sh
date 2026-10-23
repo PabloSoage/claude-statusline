@@ -66,24 +66,53 @@ fmt_dur() { # segundos -> "4m32s" o "45s"
 # Da la cuota de Fable, que no viene en el JSON, y 5h y semanal antes de la primera respuesta
 # CLAUDE_CONFIG_DIR (p.ej. un alias con otra cuenta, como claude2) apunta a
 # credenciales y cache propios; si no esta definida se usa ~/.claude.
-CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+# En Git Bash llega como C:\Users\...; se pasa a /c/Users/... para compararla con $HOME
+CFG=${CLAUDE_CONFIG_DIR:-}
+[[ -n $CFG ]] && command -v cygpath >/dev/null 2>&1 && CFG=$(cygpath -u "$CFG")
+CONFIG_DIR="${CFG:-$HOME/.claude}"
 USAGE_CACHE="$CONFIG_DIR/cache/usage.json"
-CRED_FILE="$CONFIG_DIR/.credentials.json"
-mtime=$(file_mtime "$USAGE_CACHE" || echo 0)
-if (( $(date +%s) - mtime > 300 )); then
-  mkdir -p "${USAGE_CACHE%/*}" && touch "$USAGE_CACHE"
+
+cred_token() { # $1 = CLAUDE_CONFIG_DIR de la cuenta, vacio para la de por defecto
+  local dir=${1:-$HOME/.claude} svc="Claude Code-credentials"
+  if [[ -f $dir/.credentials.json ]]; then
+    "$JQ" -r '.claudeAiOauth.accessToken // empty' "$dir/.credentials.json" 2>/dev/null | tr -d '\r'
+  elif command -v security >/dev/null 2>&1; then
+    # macOS: con CLAUDE_CONFIG_DIR la entrada del Llavero lleva de sufijo el sha256 de la ruta
+    [[ -n $1 ]] && svc+="-$(printf '%s' "$1" | shasum -a 256 | cut -c1-8)"
+    security find-generic-password -s "$svc" -w 2>/dev/null | "$JQ" -r '.claudeAiOauth.accessToken // empty'
+  fi
+}
+refresh_usage() { # $1 como en cred_token; refresca en segundo plano si la cache tiene mas de 5 min
+  local cache="${1:-$HOME/.claude}/cache/usage.json" mtime
+  mtime=$(file_mtime "$cache" || echo 0)
+  (( $(date +%s) - mtime > 300 )) || return 0
+  mkdir -p "${cache%/*}" && touch "$cache"
   (
-    if [[ -f $CRED_FILE ]]; then
-      token=$("$JQ" -r '.claudeAiOauth.accessToken // empty' "$CRED_FILE" 2>/dev/null | tr -d '\r')
-    elif command -v security >/dev/null 2>&1; then  # macOS: el token esta en el Llavero
-      token=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null |
-        "$JQ" -r '.claudeAiOauth.accessToken // empty')
-    fi
+    token=$(cred_token "$1")
     [[ -n $token ]] && curl -sf --max-time 10 https://api.anthropic.com/api/oauth/usage \
       -H "Authorization: Bearer $token" -H "anthropic-beta: oauth-2025-04-20" \
-      -o "$USAGE_CACHE.tmp" && mv "$USAGE_CACHE.tmp" "$USAGE_CACHE"
+      -o "$cache.tmp" && mv "$cache.tmp" "$cache"
   ) >/dev/null 2>&1 &
-fi
+}
+acct_suffix() { # ~/.claude -> "", ~/.claude-account3 o ~/.claude3 -> "3"
+  local b=${1%/}; b=${b##*/}
+  [[ $b =~ ([0-9]+)$ ]] && printf '%s' "${BASH_REMATCH[1]}"
+}
+# STATUSLINE_ACCOUNT (opcional) anade la cuenta a la etiqueta de wk a partir de su correo:
+#   email -> wk3 (ana.diaz7@ejemplo.com)   user -> wk3 (ana.diaz7)   num -> wk3 (7)
+acct_tag() { # $1 como en cred_token
+  [[ -n ${STATUSLINE_ACCOUNT:-} ]] || return 0
+  local json="$HOME/.claude.json"; [[ -n $1 ]] && json="$1/.claude.json"
+  "$JQ" -r --arg m "$STATUSLINE_ACCOUNT" '.oauthAccount.emailAddress // "" | select(. != "")
+    | if $m == "email" then . elif $m == "user" then split("@")[0]
+      elif $m == "num" then (split("@")[0] | capture("(?<n>[0-9]+)$")?.n) // empty
+      else empty end' "$json" 2>/dev/null | tr -d '\r'
+}
+wk_label() { # $1 como en cred_token -> "wk3", o "wk3 (7)" con STATUSLINE_ACCOUNT
+  local t; t=$(acct_tag "$1")
+  printf 'wk%s%s' "$(acct_suffix "$1")" "${t:+ ($t)}"
+}
+refresh_usage "$CFG"
 
 # Sin respuesta de la API aun no hay rate_limits ni used_percentage
 [[ -z $CTX ]] && CTX=0
@@ -117,7 +146,7 @@ fi
 
 if [[ -n $WK ]]; then
   c=$(color "$WK")
-  out+=" │ wk ${c}${WK%.*}%${RST}"
+  out+=" │ $(wk_label "$CFG") ${c}${WK%.*}%${RST}"
   [[ -n $WK_RESET ]] && out+=" ${DIM}↻ $(dia "$WK_RESET") $(fmt_epoch "$WK_RESET" '%d %H:%M') ($(remaining "$WK_RESET"))${RST}"
 fi
 
@@ -171,6 +200,21 @@ if [[ -n $CACHE_EPOCH ]]; then
     out+=" │ cache ${c}${Q}${RST} ${DIM}${ttl_label} ↻ $(fmt_dur "$left")${RST}"
   fi
 fi
+
+# Cuota semanal del resto de cuentas del equipo: ~/.claude y los directorios ~/.claudeN o
+# ~/.claude-<algo>N que tengan su propio .claude.json
+others=""
+for d in "$HOME/.claude" "$HOME"/.claude[0-9]* "$HOME"/.claude-*[0-9]; do
+  [[ -d $d && $d != "${CONFIG_DIR%/}" ]] || continue
+  [[ $d == "$HOME/.claude" || -f $d/.claude.json ]] || continue
+  arg=$d; [[ $d == "$HOME/.claude" ]] && arg=""
+  refresh_usage "$arg"
+  IFS=$'\x1f' read -r OW OW_RESET < <(USAGE_CACHE="$d/cache/usage.json" from_cache seven_day)
+  [[ -z $OW || ( -n $OW_RESET && $OW_RESET -lt $now ) ]] && continue
+  c=$(color "$OW")
+  others+="${others:+ ${DIM}·${RST} }${DIM}$(wk_label "$arg")${RST} ${c}${OW%.*}%${RST}"
+done
+[[ -n $others ]] && out+=" │ ${others}"
 
 printf '%s\n' "$out"
 exit 0
