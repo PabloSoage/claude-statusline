@@ -43,7 +43,7 @@ bar() {
   printf '%s' "$out"
 }
 remaining() { # segundos hasta el epoch -> "2h05m" o "3d4h"
-  local s=$(( $1 - $(date +%s) ))
+  local s=$(( $1 - NOW ))
   (( s < 0 )) && s=0
   if (( s >= 86400 )); then printf '%dd%dh' $((s/86400)) $((s%86400/3600))
   else printf '%dh%02dm' $((s/3600)) $((s%3600/60)); fi
@@ -67,6 +67,7 @@ fmt_dur() { # segundos -> "4m32s" o "45s"
 # CLAUDE_CONFIG_DIR (p.ej. un alias con otra cuenta, como claude2) apunta a
 # credenciales y cache propios; si no esta definida se usa ~/.claude.
 # En Git Bash llega como C:\Users\...; se pasa a /c/Users/... para compararla con $HOME
+NOW=${EPOCHSECONDS:-$(date +%s)}
 CFG=${CLAUDE_CONFIG_DIR:-}
 [[ -n $CFG ]] && command -v cygpath >/dev/null 2>&1 && CFG=$(cygpath -u "$CFG")
 CONFIG_DIR="${CFG:-$HOME/.claude}"
@@ -85,7 +86,7 @@ cred_token() { # $1 = CLAUDE_CONFIG_DIR de la cuenta, vacio para la de por defec
 refresh_usage() { # $1 como en cred_token; refresca en segundo plano si la cache tiene mas de 5 min
   local cache="${1:-$HOME/.claude}/cache/usage.json" mtime
   mtime=$(file_mtime "$cache" || echo 0)
-  (( $(date +%s) - mtime > 300 )) || return 0
+  (( NOW - mtime > 300 )) || return 0
   mkdir -p "${cache%/*}" && touch "$cache"
   (
     token=$(cred_token "$1")
@@ -94,25 +95,41 @@ refresh_usage() { # $1 como en cred_token; refresca en segundo plano si la cache
       -o "$cache.tmp" && mv "$cache.tmp" "$cache"
   ) >/dev/null 2>&1 &
 }
-acct_suffix() { # ~/.claude -> "", ~/.claude-account3 o ~/.claude3 -> "3"
-  local b=${1%/}; b=${b##*/}
-  [[ $b =~ ([0-9]+)$ ]] && printf '%s' "${BASH_REMATCH[1]}"
-}
+# Resto de cuentas del equipo: ~/.claude y los directorios ~/.claudeN o ~/.claude-<algo>N
+# que tengan su propio .claude.json
+OTHERS=()
+for d in "$HOME/.claude" "$HOME"/.claude[0-9]* "$HOME"/.claude-*[0-9]; do
+  [[ -d $d && $d != "${CONFIG_DIR%/}" ]] || continue
+  [[ $d == "$HOME/.claude" || -f $d/.claude.json ]] || continue
+  OTHERS+=("$d")
+done
+refresh_usage "$CFG"
+for d in ${OTHERS[@]+"${OTHERS[@]}"}; do
+  if [[ $d == "$HOME/.claude" ]]; then refresh_usage ""; else refresh_usage "$d"; fi
+done
 # STATUSLINE_ACCOUNT (opcional) anade la cuenta a la etiqueta de wk a partir de su correo:
 #   email -> wk3 (ana.diaz7@ejemplo.com)   user -> wk3 (ana.diaz7)   num -> wk3 (7)
-acct_tag() { # $1 como en cred_token
-  [[ -n ${STATUSLINE_ACCOUNT:-} ]] || return 0
-  local json="$HOME/.claude.json"; [[ -n $1 ]] && json="$1/.claude.json"
-  "$JQ" -r --arg m "$STATUSLINE_ACCOUNT" '.oauthAccount.emailAddress // "" | select(. != "")
-    | if $m == "email" then . elif $m == "user" then split("@")[0]
-      elif $m == "num" then (split("@")[0] | capture("(?<n>[0-9]+)$")?.n) // empty
-      else empty end' "$json" 2>/dev/null | tr -d '\r'
+acct_lines() { # un solo jq para todas: por directorio, "sufijo<US>% semanal<US>reinicio<US>correo"
+  local d files=()
+  for d in "$@"; do
+    files+=("$d/cache/usage.json")
+    if [[ -n ${STATUSLINE_ACCOUNT:-} ]]; then
+      if [[ $d == "$HOME/.claude" ]]; then files+=("$HOME/.claude.json"); else files+=("$d/.claude.json"); fi
+    fi
+  done
+  "$JQ" -nr --arg dirs "$(printf '%s\n' "$@")" --arg home "$HOME" --arg m "${STATUSLINE_ACCOUNT:-}" '
+    (reduce inputs as $x ({}; .[input_filename] = $x)) as $F
+    | $dirs | split("\n")[] | select(. != "") as $d
+    | ($F[$d + "/cache/usage.json"] // {}) as $u
+    | (($F[if $d == $home + "/.claude" then $home + "/.claude.json" else $d + "/.claude.json" end]
+        // {}).oauthAccount.emailAddress // "") as $e
+    | [ ($d | capture("(?<n>[0-9]+)$")?.n // ""),
+        ($u.seven_day.utilization // "" | tostring),
+        ($u.seven_day.resets_at // "" | sub("\\..*"; "Z") | fromdateiso8601? // "" | tostring),
+        (if $e == "" then "" elif $m == "email" then $e elif $m == "user" then ($e | split("@")[0])
+         elif $m == "num" then ($e | split("@")[0] | capture("(?<n>[0-9]+)$")?.n // "") else "" end)
+      ] | join("\u001f")' "${files[@]}" 2>/dev/null | tr -d '\r'
 }
-wk_label() { # $1 como en cred_token -> "wk3", o "wk3 (7)" con STATUSLINE_ACCOUNT
-  local t; t=$(acct_tag "$1")
-  printf 'wk%s%s' "$(acct_suffix "$1")" "${t:+ ($t)}"
-}
-refresh_usage "$CFG"
 
 # Sin respuesta de la API aun no hay rate_limits ni used_percentage
 [[ -z $CTX ]] && CTX=0
@@ -124,7 +141,16 @@ from_cache() { # ventana del endpoint de uso -> "porcentaje<US>epoch de reinicio
 [[ -z $H5 ]] && IFS=$'\x1f' read -r H5 H5_RESET < <(from_cache five_hour)
 [[ -z $WK ]] && IFS=$'\x1f' read -r WK WK_RESET < <(from_cache seven_day)
 # Una ventana de la cache cuyo reinicio ya paso esta caducada
-now=$(date +%s)
+now=$NOW
+SELF_SFX=""; SELF_TAG=""; others=""
+{
+  IFS=$'\x1f' read -r SELF_SFX _ _ SELF_TAG
+  while IFS=$'\x1f' read -r sfx ow ow_reset tag; do
+    [[ -z $ow || ( -n $ow_reset && $ow_reset -lt $now ) ]] && continue
+    c=$(color "$ow")
+    others+="${others:+ ${DIM}·${RST} }${DIM}wk${sfx}${tag:+ ($tag)}${RST} ${c}${ow%.*}%${RST}"
+  done
+} < <(acct_lines "${CONFIG_DIR%/}" ${OTHERS[@]+"${OTHERS[@]}"})
 [[ -n $H5_RESET && $H5_RESET -lt $now ]] && H5=""
 [[ -n $WK_RESET && $WK_RESET -lt $now ]] && WK=""
 
@@ -146,7 +172,7 @@ fi
 
 if [[ -n $WK ]]; then
   c=$(color "$WK")
-  out+=" │ $(wk_label "$CFG") ${c}${WK%.*}%${RST}"
+  out+=" │ wk${SELF_SFX}${SELF_TAG:+ ($SELF_TAG)} ${c}${WK%.*}%${RST}"
   [[ -n $WK_RESET ]] && out+=" ${DIM}↻ $(dia "$WK_RESET") $(fmt_epoch "$WK_RESET" '%d %H:%M') ($(remaining "$WK_RESET"))${RST}"
 fi
 
@@ -188,7 +214,7 @@ if [[ -n $TRANSCRIPT && -f $TRANSCRIPT ]]; then
 fi
 
 if [[ -n $CACHE_EPOCH ]]; then
-  left=$(( CACHE_EPOCH + CACHE_TTL - $(date +%s) ))
+  left=$(( CACHE_EPOCH + CACHE_TTL - NOW ))
   if (( left > 0 )); then
     pct_left=$(( left * 100 / CACHE_TTL ))
     if   (( pct_left >= 75 )); then Q="●"
@@ -201,19 +227,7 @@ if [[ -n $CACHE_EPOCH ]]; then
   fi
 fi
 
-# Cuota semanal del resto de cuentas del equipo: ~/.claude y los directorios ~/.claudeN o
-# ~/.claude-<algo>N que tengan su propio .claude.json
-others=""
-for d in "$HOME/.claude" "$HOME"/.claude[0-9]* "$HOME"/.claude-*[0-9]; do
-  [[ -d $d && $d != "${CONFIG_DIR%/}" ]] || continue
-  [[ $d == "$HOME/.claude" || -f $d/.claude.json ]] || continue
-  arg=$d; [[ $d == "$HOME/.claude" ]] && arg=""
-  refresh_usage "$arg"
-  IFS=$'\x1f' read -r OW OW_RESET < <(USAGE_CACHE="$d/cache/usage.json" from_cache seven_day)
-  [[ -z $OW || ( -n $OW_RESET && $OW_RESET -lt $now ) ]] && continue
-  c=$(color "$OW")
-  others+="${others:+ ${DIM}·${RST} }${DIM}$(wk_label "$arg")${RST} ${c}${OW%.*}%${RST}"
-done
+# Cuota semanal del resto de cuentas, calculada arriba
 [[ -n $others ]] && out+=" │ ${others}"
 
 printf '%s\n' "$out"
