@@ -14,6 +14,19 @@ if ! command -v jq >/dev/null 2>&1; then
     [[ -x "$c" ]] && { JQ="$c"; break; }
   done
 fi
+# Un shim de mise relanza mise en cada llamada para elegir version (~200 ms en Windows), y
+# aqui jq se llama varias veces por repintado. Resolvemos una vez el binario real y guardamos
+# la ruta; si deja de existir (tras `mise up`), se vuelve a resolver.
+if [[ $(command -v "$JQ") == */mise/shims/* ]]; then
+  jq_cache="$HOME/.cache/statusline-jq-path"
+  real=$(cat "$jq_cache" 2>/dev/null)
+  if [[ ! -x $real ]]; then
+    real=$(mise which jq 2>/dev/null | tr -d '\r')
+    command -v cygpath >/dev/null && [[ -n $real ]] && real=$(cygpath -u "$real")
+    [[ -x $real ]] && mkdir -p "${jq_cache%/*}" && printf '%s' "$real" > "$jq_cache"
+  fi
+  [[ -x $real ]] && JQ=$real
+fi
 
 # jq.exe en Windows escribe CRLF; quitamos el \r con tr en cada llamada para que los
 # campos numericos no lleguen con basura al final (rompe comparaciones aritmeticas).

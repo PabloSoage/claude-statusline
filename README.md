@@ -292,6 +292,7 @@ Claude Sonnet 4.6 (Thinking) · high │ ctx ▓▓▓▓░░░░░░ 40% 
   - Gemini models (`Gemini 3.8 Flash`, `Gemini 3.1 Pro`, etc.) track the **Gemini Models** quota group (`gemini-5h`, `gemini-weekly`).
   - Claude and GPT models (`Claude Sonnet 4.6`, `Claude Opus 4.6`, `GPT-OSS 120B`) switch to the **Claude and GPT models** quota group (`3p-5h`, `3p-weekly`).
 - **Direct quota consumption**: Uses live quota metrics injected directly by Antigravity CLI via stdin (`.quota`), falling back to local cached usage if available without spawning background subshells (preventing command runner timeouts on Windows Git Bash).
+- **Fast repaints**: `agy` reruns the command constantly, and a slow one makes the prompt redraw over what you type (arrow keys in `/resume` stop responding). The script runs a single `jq` and otherwise only bash builtins (~110 ms on Windows, against ~1 s before), and if `jq` is a [mise](https://mise.jdx.dev) shim it resolves the real binary once and caches its path in `~/.cache/statusline-jq-path`, since each shim call relaunches mise (~200 ms). The Claude Code status line uses the same `jq` lookup.
 
 ## Quick install (Antigravity)
 
