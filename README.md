@@ -243,7 +243,7 @@ been tested on a real machine yet.
 #### Sessions of different accounts talking to each other
 
 Each running session registers itself in `<config dir>/sessions/<pid>.json`, with the path of its
-messaging socket. Sessions only find the ones registered in the same directory, so with a separate
+messaging socket (next to it, a `<pid>.<hash>.key` file). Sessions only find the ones registered in the same directory, so with a separate
 `sessions/` per account a session of `claude2` can't see or message one of `claude`. With
 `sessions/` symlinked (a junction on Windows) like above, every session sees every other one
 (`ListAgents`, `SendMessage`). Delivery still follows `crossSessionInbound`: by default a message is
@@ -266,8 +266,11 @@ $D = "$env:USERPROFILE\.claude2"; $S = "$env:USERPROFILE\.claude"
 if ((Test-Path "$D\sessions") -and -not (Get-Item "$D\sessions").LinkType) {
   New-Item -ItemType Directory -Force "$S\sessions" | Out-Null
   Move-Item "$D\sessions\*" "$S\sessions\" -ErrorAction SilentlyContinue
-  Remove-Item "$D\sessions"
-  New-Item -ItemType Junction -Path "$D\sessions" -Target "$S\sessions" | Out-Null
+  if (Get-ChildItem -Force "$D\sessions") { Write-Warning "$D\sessions still has entries already in $S\sessions" }
+  else {
+    Remove-Item "$D\sessions"
+    New-Item -ItemType Junction -Path "$D\sessions" -Target "$S\sessions" | Out-Null
+  }
 }
 ```
 
