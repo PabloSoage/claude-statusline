@@ -138,12 +138,13 @@ claude3:  … │ wk3 5% ↻ mié 28 07:00 (4d20h) │ fable 0% │ cache ● 1h
 
 Each account is its own config dir, and `CLAUDE_CONFIG_DIR` points Claude Code at it. The login
 stays per dir (its own Keychain entry on macOS, its own `.credentials.json` elsewhere), and
-everything else is symlinked to `~/.claude`, so memory, sessions (`/resume`), skills, settings and
+everything else is symlinked to `~/.claude`, so memory, sessions (`/resume`), skills, settings, the
+registry of open sessions (so sessions of different accounts can message each other) and
 this status line are shared by all accounts.
 
 | Shared (symlinked to `~/.claude`) | Per account (never link these) |
 | --- | --- |
-| `projects/` (memory and transcripts), `history.jsonl`, `plans/`, `todos/`, `file-history/`, `paste-cache/`, `CLAUDE.md`, `settings.json`, `keybindings.json`, `statusline.sh`, `skills/`, `commands/`, `agents/`, `plugins/`, `hooks/`, `workflows/` | `.claude.json` (account, MCP servers, trusted folders), `.credentials.json` (the login on Windows/Linux), `backups/` (copies of `.claude.json`: if shared, Claude Code could restore another account's), `cache/` (that account's usage), sessions and other runtime state |
+| `projects/` (memory and transcripts), `history.jsonl`, `plans/`, `todos/`, `file-history/`, `paste-cache/`, `CLAUDE.md`, `settings.json`, `keybindings.json`, `statusline.sh`, `skills/`, `commands/`, `agents/`, `plugins/`, `hooks/`, `workflows/`, `sessions/` (registry of open sessions: shared, every session sees and can message the others) | `.claude.json` (account, MCP servers, trusted folders), `.credentials.json` (the login on Windows/Linux), `backups/` (copies of `.claude.json`: if shared, Claude Code could restore another account's), `cache/` (that account's usage), `session-env/`, `shell-snapshots/` and other runtime state |
 
 Use one account at a time per project: they all write the same memory and transcripts.
 
@@ -153,7 +154,7 @@ Use one account at a time per project: they all write the same memory and transc
 N=2                                   # creates ~/.claude2 and the command claude2
 S="$HOME/.claude"; D="$HOME/.claude$N"
 mkdir -p "$D"
-for f in projects plans todos file-history paste-cache skills commands agents plugins hooks workflows; do
+for f in projects plans todos file-history paste-cache skills commands agents plugins hooks workflows sessions; do
   mkdir -p "$S/$f"; [ -e "$D/$f" ] || ln -s "$S/$f" "$D/$f"
 done
 for f in history.jsonl CLAUDE.md settings.json keybindings.json statusline.sh; do
@@ -199,7 +200,7 @@ saves by replacing the file breaks a hard link, and the copies drift apart).
 $N = 2
 $S = "$env:USERPROFILE\.claude"; $D = "$env:USERPROFILE\.claude$N"
 New-Item -ItemType Directory -Force $D | Out-Null
-foreach ($f in 'projects','plans','todos','file-history','paste-cache','skills','commands','agents','plugins','hooks','workflows') {
+foreach ($f in 'projects','plans','todos','file-history','paste-cache','skills','commands','agents','plugins','hooks','workflows','sessions') {
   New-Item -ItemType Directory -Force "$S\$f" | Out-Null
   if (-not (Test-Path "$D\$f")) { New-Item -ItemType Junction -Path "$D\$f" -Target "$S\$f" | Out-Null }
 }
@@ -238,6 +239,37 @@ or `.claude.json`. Don't remove a junction with `Remove-Item -Recurse` (PowerShe
 the target's contents); plain `Remove-Item` removes only the link. From Git Bash or WSL, follow the
 Linux steps instead (WSL has its own `~`, separate from Windows'). The Windows steps haven't
 been tested on a real machine yet.
+
+#### Sessions of different accounts talking to each other
+
+Each running session registers itself in `<config dir>/sessions/<pid>.json`, with the path of its
+messaging socket. Sessions only find the ones registered in the same directory, so with a separate
+`sessions/` per account a session of `claude2` can't see or message one of `claude`. With
+`sessions/` symlinked (a junction on Windows) like above, every session sees every other one
+(`ListAgents`, `SendMessage`). Delivery still follows `crossSessionInbound`: by default a message is
+delivered straight away only when both sessions are in the same permission mode class; otherwise
+it is held until you approve it.
+
+An account created before `sessions/` was shared still has its own directory. Move its entries over
+and link it (running sessions keep working; restart them to be sure they pick up the change):
+
+```bash
+D="$HOME/.claude2"; S="$HOME/.claude"
+if [ -d "$D/sessions" ] && [ ! -L "$D/sessions" ]; then
+  mkdir -p "$S/sessions" && mv -n "$D/sessions"/* "$S/sessions"/ 2>/dev/null
+  rmdir "$D/sessions" && ln -s "$S/sessions" "$D/sessions"
+fi
+```
+
+```powershell
+$D = "$env:USERPROFILE\.claude2"; $S = "$env:USERPROFILE\.claude"
+if ((Test-Path "$D\sessions") -and -not (Get-Item "$D\sessions").LinkType) {
+  New-Item -ItemType Directory -Force "$S\sessions" | Out-Null
+  Move-Item "$D\sessions\*" "$S\sessions\" -ErrorAction SilentlyContinue
+  Remove-Item "$D\sessions"
+  New-Item -ItemType Junction -Path "$D\sessions" -Target "$S\sessions" | Out-Null
+}
+```
 
 #### Memory writes asking for permission
 
